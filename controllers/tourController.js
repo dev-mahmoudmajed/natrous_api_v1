@@ -1,6 +1,7 @@
 // const fs = require('fs');
 const { Query } = require('mongoose');
 const {Tour} = require('../models/tourModel'); 
+const APIFeatires = require('../utlis/apiFeature');
 
 /*
   middleware to handle request 
@@ -51,13 +52,14 @@ exports.getAllTours = async(req, res) => {
   // console.log(req.query);
   
   try{
-  //---------------------{    Build Query     }-----------------------------
-  //-------- 1- Basic filtering
-  // const tours =await Tour.find();
-  // const tours =await Tour.find({
-  //   duration: 5,
-  //   difficulty: 'easy'
-  // });
+  /*query Before Refactor to class
+  ---------------------{    Build Query     }-----------------------------
+  -------- 1- Basic filtering
+  const tours =await Tour.find();
+  const tours =await Tour.find({
+    duration: 5,
+    difficulty: 'easy'
+  });
   const queryObj = {...req.query}
   const excludedFields = ['page', 'sort', 'limit', 'fields']
   excludedFields.forEach(el => delete queryObj[el])
@@ -74,7 +76,7 @@ exports.getAllTours = async(req, res) => {
   console.log(JSON.parse(queryStr));
   let query = Tour.find(JSON.parse(queryStr));
 
-  //-------- 3- Sorting
+  -------- 3- Sorting
   //http://localhost:3000/api/v1/tours?sort=price,ratingsAverage
     if(req.query.sort){
       const sortBy = req.query.sort.split(',').join(' ')
@@ -91,7 +93,7 @@ exports.getAllTours = async(req, res) => {
     }else{
       query = query.select('-__v')
     }
-    //-------- 5)-Pagination
+    -------- 5)-Pagination
     const page = req.query.page * 1 || 1
     const limit = req.query.limit * 1 || 50
     const skip = (page - 1) * limit
@@ -101,8 +103,14 @@ exports.getAllTours = async(req, res) => {
       if(skip >= numTours) throw new Error('This page does not exist')
     }
 
-  //---------------------{  Execute query  }-----------------------------
-  const tours = await query;
+  ---------------------{  Execute query  }-----------------------------
+
+  !!
+
+*/
+  
+  const features = new APIFeatires(Tour.find(), req.query ).filter().sort().limitFields().paginate();
+  const tours = await features.query;
 
   res.status(200).json({
     status: 'success',
@@ -201,6 +209,49 @@ exports.deleteTour = async(req, res) => {
     });
   }
 };
+
+//------------------- { Aggregation Pipeline  ( MongoDB Feature )}------------------------------
+
+exports.getTourStats = async(req, res) => {
+  try {
+    const stats = await Tour.aggregate([
+      {
+        $match: { ratingsAverage: { $gte: 4.5 } }
+      },
+      {
+        $group: {
+          _id:{ $toUpper: '$difficulty'},
+          numTours: { $sum: 1 },
+          numRatings: { $sum: '$ratingsQuantity' },
+          avgRating: { $avg: '$ratingsAverage' },
+          avgPrice: { $avg: '$price' },
+          minPrice: { $min: '$price' },
+          maxPrice: { $max: '$price' }
+        }
+      },
+      {
+        $sort: { avgPrice: 1 }
+      }
+    ])
+    res.status(200).json({
+      status:'success',
+      data: {
+        stats
+      }
+    });
+  } 
+  catch(err) {
+    res.status(404).json({
+      status: 'fail',
+      message: err.message
+    });
+  }
+}
+
+
+
+
+
 
 
 
